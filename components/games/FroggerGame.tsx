@@ -123,6 +123,7 @@ function buildLanes(level: number): Lane[] {
 
 const JUMP_MS = 120;
 const FROG_START_COL = COLS / 2 - 0.5; // centrada entre las columnas 7 y 8
+const FROG_HITBOX_MARGIN = 0.15; // celdas, a cada lado
 const START_LIVES = 3;
 const ROUND_TIME_MS = 15000;
 const ROUND_TIME_STEP_MS = 1000; // menos tiempo por nivel
@@ -169,6 +170,7 @@ interface GameState {
   timeLeft: number; // ms
   elapsed: number; // ms de juego, para el ciclo de las tortugas
   pendingDir: Direction | null;
+  bestRow: number; // fila más alta alcanzada por la rana actual (puntos por avance)
 }
 
 function roundTimeMs(level: number): number {
@@ -201,11 +203,26 @@ function initialState(): GameState {
     timeLeft: roundTimeMs(1),
     elapsed: 0,
     pendingDir: null,
+    bestRow: ROW_START,
   };
+}
+
+// Rana nueva en la salida con el temporizador completo. Muta el objeto
+// existente para no dejar referencias obsoletas en el loop.
+function respawnFrog(s: GameState) {
+  Object.assign(s.frog, newFrog());
+  s.facing = 'up';
+  s.pendingDir = null;
+  s.timeLeft = roundTimeMs(s.level);
+  s.bestRow = ROW_START;
 }
 
 function isRiverRow(row: number): boolean {
   return row >= ROW_RIVER_TOP && row <= ROW_RIVER_BOT;
+}
+
+function isRoadRow(row: number): boolean {
+  return row >= ROW_ROAD_TOP && row <= ROW_ROAD_BOT;
 }
 
 // Entidad del río que sostiene a la rana (su centro cae sobre ella), o null.
@@ -223,6 +240,31 @@ function getSupport(frog: Frog, lanes: Lane[]): Entity | null {
         center < e.col + e.width,
     ) ?? null
   );
+}
+
+// ¿Algún vehículo solapa a la rana en su carril? La hitbox de la rana es algo
+// más estrecha que la celda para que los roces no sean letales.
+function checkRoadCollision(frog: Frog, lanes: Lane[]): boolean {
+  if (!isRoadRow(frog.row)) return false;
+  const lane = lanes.find((l) => l.row === frog.row);
+  if (!lane) return false;
+  const left = frog.col + FROG_HITBOX_MARGIN;
+  const right = frog.col + 1 - FROG_HITBOX_MARGIN;
+  return lane.entities.some(
+    (e) => (e.type === 'car' || e.type === 'truck') && left < e.col + e.width && right > e.col,
+  );
+}
+
+// Índice de la boca libre bajo la rana, o -1 si no hay boca o ya está
+// ocupada (en ambos casos la rana muere).
+function checkGoal(frog: Frog, goals: boolean[]): number {
+  if (frog.row !== ROW_GOALS) return -1;
+  const col = Math.round(frog.col);
+  for (let i = 0; i < GOAL_SLOTS; i++) {
+    const start = goalStartCol(i);
+    if (col >= start && col < start + GOAL_WIDTH) return goals[i] ? -1 : i;
+  }
+  return -1;
 }
 
 function updateTurtles(lanes: Lane[], elapsed: number) {
@@ -530,11 +572,35 @@ export default function FroggerGame({
     let raf = 0;
     let last = performance.now();
 
-    // ── Hooks de los pasos 5 y 7 ────────────────────────────────────────────
-    // Paso 5: muerte / meta / puntuación al aterrizar.
-    function resolveLanding() {}
+    // ── Hooks de los pasos 6 y 7 ────────────────────────────────────────────
+    // Paso 6: ronda completada (+200, nivel siguiente, carriles nuevos).
+    function completeRound() {}
     // Paso 7: pérdida de vida, reinicio de posición y game over.
     function killFrog() {}
+
+    // ── Aterrizaje ──────────────────────────────────────────────────────────
+    // Puntos por avance y resolución de la fila de metas. Los peligros de
+    // carretera y río se comprueban cada frame en update().
+    function resolveLanding() {
+      const s = stateRef.current;
+      const { frog } = s;
+
+      if (frog.row < s.bestRow) {
+        s.score += 10 * (s.bestRow - frog.row);
+        s.bestRow = frog.row;
+      }
+      if (frog.row !== ROW_GOALS) return;
+
+      const slot = checkGoal(frog, s.goals);
+      if (slot < 0) {
+        killFrog();
+        return;
+      }
+      s.goals[slot] = true;
+      s.score += 50 + Math.floor(s.timeLeft / 1000) * 10;
+      respawnFrog(s);
+      if (s.goals.every(Boolean)) completeRound();
+    }
 
     // ── Input ───────────────────────────────────────────────────────────────
     function startJump(s: GameState, dir: Direction) {
@@ -604,6 +670,12 @@ export default function FroggerGame({
           const center = frog.col + 0.5;
           if (center < 0 || center > COLS) killFrog();
         }
+      }
+
+      // Peligros: vehículo en la carretera, agua (sin soporte) en el río
+      if (!frog.animating) {
+        if (checkRoadCollision(frog, lanes)) killFrog();
+        else if (isRiverRow(frog.row) && !getSupport(frog, lanes)) killFrog();
       }
 
       s.timeLeft -= dt;
