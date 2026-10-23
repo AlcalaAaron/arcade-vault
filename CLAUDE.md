@@ -41,6 +41,21 @@ Usa siempre /frontend-design para diseñar la interfaz de usuario.
 
 `spec` and `spec-impl` come from `npx skills@latest add Klerith/fernando-skills` (pinned in `skills-lock.json`). Their source lives in `.agents/skills/`; `.claude/skills/spec*` are pointers to it.
 
+## Agents
+
+Project subagents live in `.claude/agents/`.
+
+| Agent          | Use                                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `game-planner` | Plans and decides which new game fits the platform: 1 main pick + 2 alternatives, scored against the platform's fit criteria, ending with a `/spec` hand-off |
+
+`game-planner` details:
+
+- **Invoke** it to propose, compare or prioritise games, and to record a decision on a past suggestion ("acepto X, spec NN", "descarto Y porque…", "Z ya está implementado").
+- **Memory** (`memory: project`) in `.claude/agent-memory/game-planner/`: `MEMORY.md` (short index loaded at start: learned preferences + suggestions table) and `sugerencias.md` (one entry per game with its state: `sugerido` / `aceptado` / `descartado` / `implementado`). It never re-suggests a game already in memory, already on the platform or in the mock catalog.
+- **To-do**: rewrites `references/game-suggestions-todo.md` on every run (Pendientes / En curso / Hechos / Descartados, one line per game), kept in sync with its memory.
+- **Reads** `references/implemented-games.md`, `app/data/games.ts`, `specs/`, `references/started-games/` and `app/globals.css`. It writes only its memory and the to-do — never app code.
+
 ## Specs
 
 | #   | Spec                                    | Delivers                                                                                   |
@@ -83,6 +98,8 @@ Dynamic route `params` are a `Promise` (unwrap with `use(params)` in client comp
 
 - `references/templates/` — original HTML/JSX prototype the screens are ported from (`biblioteca`, `detalle`, `reproductor`, `salon`, `auth`, `home-about/`). Consult it when building or matching a screen.
 - `references/started-games/` — standalone vanilla-JS games (Asteroids, Tetris, Arkanoid) to be integrated as real games later.
+- `references/implemented-games.md` — status of the real games (DB rows, specs, components, branches).
+- `references/game-suggestions-todo.md` — game suggestions to-do, owned by the `game-planner` agent (not read-only: let the agent update it).
 
 ## Environment & integrations
 
