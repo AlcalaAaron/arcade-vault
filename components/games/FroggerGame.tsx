@@ -572,11 +572,21 @@ export default function FroggerGame({
     let raf = 0;
     let last = performance.now();
 
-    // ── Hooks de los pasos 6 y 7 ────────────────────────────────────────────
-    // Paso 6: ronda completada (+200, nivel siguiente, carriles nuevos).
-    function completeRound() {}
+    // ── Hook del Paso 7 ─────────────────────────────────────────────────────
     // Paso 7: pérdida de vida, reinicio de posición y game over.
     function killFrog() {}
+
+    // ── Ronda completada ────────────────────────────────────────────────────
+    // onLevelChange se dispara en update() al detectar el cambio de nivel.
+    function completeRound() {
+      const s = stateRef.current;
+      s.score += 200;
+      s.level += 1;
+      // Se mutan en su sitio: update() conserva referencias a estos arrays
+      s.lanes.splice(0, s.lanes.length, ...buildLanes(s.level));
+      s.goals.fill(false);
+      respawnFrog(s); // posición inicial y temporizador del nuevo nivel
+    }
 
     // ── Aterrizaje ──────────────────────────────────────────────────────────
     // Puntos por avance y resolución de la fila de metas. Los peligros de
