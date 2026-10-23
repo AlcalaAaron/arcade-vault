@@ -6,109 +6,65 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Arcade Vault — an online gaming platform where users play and compete for points. Built with **Spec Driven Design**: every feature starts as a spec in `specs/` (via `/spec`) and is implemented from it (via `/spec-impl`).
+Arcade Vault — online gaming platform where users play classic arcade games and compete for points on per-game leaderboards. Uses **Spec Driven Design** via the `/spec` and `/spec-impl` skills from `npx skills@latest add Klerith/fernando-skills` (see `skills-lock.json`).
 
 ## Stack
 
-- **Next.js 16.2.6** with App Router (`app/` directory) — read `node_modules/next/dist/docs/` before writing Next.js code; APIs differ from training data
+- **Next.js 16.2.6** with App Router — read `node_modules/next/dist/docs/` before writing Next.js code; APIs differ from training data
 - **React 19.2.4**
 - **Tailwind CSS v4** (PostCSS plugin via `@tailwindcss/postcss`)
-- **TypeScript** — path alias `@/*` → project root (e.g. `@/components/Nav`, `@/app/data`)
-- **Resend** (`resend`) — transactional email from the contact form
-- **Prettier** + **ESLint** (`eslint-config-next` core-web-vitals + typescript)
+- **TypeScript**
+- **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) — auth + scores persistence
+- **Resend** — contact form email delivery
 
-No test runner is configured yet.
-
-## Commands
-
-```bash
-npm run dev      # dev server (port 3000)
-npm run build    # production build
-npm run start    # serve production build
-npm run lint     # ESLint
-```
+No test runner configured.
 
 ## Skills
 
-Usa siempre /frontend-design para diseñar la interfaz de usuario.
+Usa siempre `/frontend-design` para diseñar la interfaz de usuario.
 
-| Skill              | Use                                                                                                |
-| ------------------ | -------------------------------------------------------------------------------------------------- |
-| `/spec`            | Write a new spec in `specs/NN-kebab-name.md` from the template (`.agents/skills/spec/template.md`) |
-| `/spec-impl`       | Implement an approved spec and update its **Estado**                                               |
-| `/frontend-design` | Any UI work — keep the retro-arcade / neon CRT aesthetic                                           |
-| `/worktree`        | Run a task in an isolated git worktree under `.trees/[name]`                                       |
+## Agentes
 
-`spec` and `spec-impl` come from `npx skills@latest add Klerith/fernando-skills` (pinned in `skills-lock.json`). Their source lives in `.agents/skills/`; `.claude/skills/spec*` are pointers to it.
-
-## Agents
-
-Project subagents live in `.claude/agents/`.
-
-| Agent          | Use                                                                                                                                                          |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `game-planner` | Plans and decides which new game fits the platform: 1 main pick + 2 alternatives, scored against the platform's fit criteria, ending with a `/spec` hand-off |
-
-`game-planner` details:
-
-- **Invoke** it to propose, compare or prioritise games, and to record a decision on a past suggestion ("acepto X, spec NN", "descarto Y porque…", "Z ya está implementado").
-- **Memory** (`memory: project`) in `.claude/agent-memory/game-planner/`: `MEMORY.md` (short index loaded at start: learned preferences + suggestions table) and `sugerencias.md` (one entry per game with its state: `sugerido` / `aceptado` / `descartado` / `implementado`). It never re-suggests a game already in memory, already on the platform or in the mock catalog.
-- **To-do**: rewrites `references/game-suggestions-todo.md` on every run (Pendientes / En curso / Hechos / Descartados, one line per game), kept in sync with its memory.
-- **Reads** `references/implemented-games.md`, `app/data/games.ts`, `specs/`, `references/started-games/` and `app/globals.css`. It writes only its memory and the to-do — never app code.
-
-## Specs
-
-| #   | Spec                                    | Delivers                                                                                   |
-| --- | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| 01  | `specs/01-mvp-visual-screens.md`        | Nav + library, game detail, player, auth and Hall of Fame screens (visual only, mock data) |
-| 02  | `specs/02-home-landing-page.md`         | `/` becomes the landing page; library moves to `/games`                                    |
-| 03  | `specs/03-about-page-contact-resend.md` | `/about` page + contact form that sends real email via Resend                              |
-
-Specs are written in Spanish and carry a header with `Estado`, `Depende de` and `Fecha`. Read the relevant spec (and its out-of-scope list) before changing a feature.
+- **`game-planner`** (`.claude/agents/game-planner.md`) — planifica y sugiere el próximo juego a implementar. Lee el catálogo actual, evalúa candidatos por diversidad de género, factibilidad en canvas 2D y reconocimiento clásico, y mantiene una memoria persistente de sugerencias en `references/game-suggestions-todo.md`. Úsalo cuando el usuario pregunte qué juego sigue o pida ideas.
+- **`game-jam`** (`.claude/agents/game-jam.md`) — dado un tema en lenguaje natural, elige un juego arcade y genera al menos dos specs completos en `specs/game-jam/<game-id>/` siguiendo el formato de los specs 07-09. Úsalo con "game jam: <tema>" o "specs para un juego de <tema>".
+- **`skin-designer`** (`.claude/agents/skin-designer.md`) — aplica los 3 skins canónicos (classic, retro, neon) al juego indicado por el usuario. Trabaja un juego por corrida. Implementa directamente sobre `components/games/<Juego>.tsx` siguiendo el patrón de TetrisGame. Memoria en `references/game-with-themes.md`. Úsalo con "aplica skins a \<juego\>".
+- **`mobile-porter`** (`.claude/agents/mobile-porter.md`) — aplica el patrón de controles táctiles mobile (spec 10) a un juego concreto: oculta el HUD en `<md`, escala el canvas, y cabla `<MobileGamepad>` en la play-page sin tocar el componente canvas. Trabaja un juego por corrida. Úsalo con "porta \<juego\> a mobile", "añade controles táctiles a \<juego\>" o "haz \<juego\> responsive".
 
 ## Architecture
 
-App Router only — no `pages/` directory. Server Components by default; `"use client"` only when needed (most interactive pages are client components).
+App Router exclusively — no `pages/` directory.
 
-### Routes
+### Routes (`app/`)
 
-| Route               | File                           | Notes                                                                      |
-| ------------------- | ------------------------------ | -------------------------------------------------------------------------- |
-| `/`                 | `app/page.tsx`                 | Landing: hero, features, game rail, stats, live activity, pricing, CTA     |
-| `/games`            | `app/games/page.tsx`           | Library: category filters, search, 3D-tilt game cards                      |
-| `/games/[id]`       | `app/games/[id]/page.tsx`      | Game detail + leaderboard                                                  |
-| `/games/[id]/play`  | `app/games/[id]/play/page.tsx` | Player: HUD, simulated score, pause / game-over overlays (no real game)    |
-| `/hall-of-fame`     | `app/hall-of-fame/page.tsx`    | Podium + per-game score tables                                             |
-| `/auth`             | `app/auth/page.tsx`            | Login / register tabs (visual only, no backend)                            |
-| `/about`            | `app/about/page.tsx`           | About section + contact form                                               |
-| `POST /api/contact` | `app/api/contact/route.ts`     | Receives `{ name, email, msg }`, sends via Resend → `{ ok }` / `{ error }` |
+- `layout.tsx` — root layout (Geist fonts, global CSS, `UserContext` provider, `Nav`)
+- `page.tsx` — home / landing
+- `about/` — about + contact form
+- `api/contact/` — Resend-backed contact endpoint
+- `auth/` — Supabase auth page
+- `games/` — games index (`GamesGrid.tsx`) + per-game routes like: `arkanoid`, `asteroids`, `snake`, `tetris` and more...
+  (see `references/implemented-games.md`) when you need to check which games are implemented and how to implement new ones.
 
-Dynamic route `params` are a `Promise` (unwrap with `use(params)` in client components / `await` in server components).
+- `games/[id]/` — dynamic game detail with nested `play/` route
+- `hall-of-fame/` — leaderboard / scores
+- `context/UserContext.tsx` — client-side auth user context
+- `data/` — static catalog: `games.ts`, `scores.ts`, `index.ts`
+- `RevealObserver.tsx` — scroll-reveal animations
 
 ### Shared code
 
-- `app/layout.tsx` — root layout: `UserProvider`, background layers (`.av-bg`, `.av-noise`), `Nav`, `<main className="av-main">`, footer.
-- `components/Nav.tsx` — top nav with active-link state, coin counter, auth button, mobile hamburger drawer. Shared UI goes in `components/`.
-- `app/context/UserContext.tsx` — mock auth: `useUser()` → `{ user, login, signOut }`, persisted in `localStorage` (`av_user`).
-- `app/data/` — mock data, import from `@/app/data`: `GAMES` (`games.ts`) and `seededScores(seed, count)` (`scores.ts`). No database yet.
-- `app/globals.css` — the whole visual theme: CSS variables (`--bg`, `--cyan`, `--magenta`, `--pixel`, `--mono`…), fonts (Press Start 2P, JetBrains Mono via Google Fonts), CRT/scanline/neon effects, animations (`fade-in`, `flicker`, `blink`, `.reveal` / `.in` scroll reveal). Reuse these classes and variables instead of inventing new colors.
-- `demos/` — scratch components, not part of the app.
+- `components/Nav.tsx` — top navigation
+- `components/games/` — canvas game implementations (`ArkanoidGame`, `AsteroidsGame`, `SnakeGame`, `TetrisGame`)
+- `lib/supabase/` — `client.ts` (browser), `server.ts` (RSC/route handlers), `types.ts` (DB types)
+- `public/` — sprite sheets (`spritesheet-breakout.png`, `fruits.png`) and audio (`ball-bounce.mp3`, `break-sound.mp3`)
 
-### References (read-only)
+### Specs
 
-- `references/templates/` — original HTML/JSX prototype the screens are ported from (`biblioteca`, `detalle`, `reproductor`, `salon`, `auth`, `home-about/`). Consult it when building or matching a screen.
-- `references/started-games/` — standalone vanilla-JS games (Asteroids, Tetris, Arkanoid) to be integrated as real games later.
-- `references/implemented-games.md` — status of the real games (DB rows, specs, components, branches).
-- `references/game-suggestions-todo.md` — game suggestions to-do, owned by the `game-planner` agent (not read-only: let the agent update it).
+`specs/` holds the spec-driven design history (01 → 09): MVP screens, landing, about+contact, Supabase integration, each game, and the shared games-table/leaderboard schema.
 
-## Environment & integrations
+## Conventions
 
-- `.env` (git-ignored; template in `.env.template`): `RESEND_API_KEY`, `SB_PWD` (Supabase DB password).
-- **Supabase MCP** — server config in `references/.mcp.json`, enabled via `.claude/settings.local.json`. Supabase is not yet used by the app code.
-- **Playwright MCP** — save screenshots in `.playwright-screenshots/` (git-ignored except `.gitkeep`).
-
-## Code style & hooks
-
-- `.claude/settings.json` runs `.claude/hooks/format-and-lint.mjs` after every Write/Edit: Prettier `--write`, ESLint `--fix`, and trailing-whitespace strip. ESLint errors fail the hook — fix them before moving on.
-- Prettier (`.prettierrc`): single quotes, semicolons, 2-space indent, trailing commas, `printWidth` 80, LF line endings.
-- UI copy is in Spanish.
+- Server Components by default; add `"use client"` only when needed (game canvases, auth context, interactive forms).
+- New routes: folder under `app/` with `page.tsx`.
+- Shared UI in `components/`; game logic colocated in `components/games/<Game>.tsx`.
+- Supabase: import from `lib/supabase/server` in RSC / route handlers, `lib/supabase/client` in client components.
+- New games follow the existing pattern: spec in `specs/`, canvas component in `components/games/`, route under `app/games/<name>/`, score writes through `lib/supabase`.
