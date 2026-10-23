@@ -551,6 +551,7 @@ export default function FroggerGame({
   onScoreChange,
   onLivesChange,
   onLevelChange,
+  onGameOver,
 }: FroggerGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused);
@@ -569,12 +570,44 @@ export default function FroggerGame({
     let prevScore = 0;
     let prevLives = START_LIVES;
     let prevLevel = 1;
+    let over = false;
     let raf = 0;
     let last = performance.now();
 
-    // ── Hook del Paso 7 ─────────────────────────────────────────────────────
-    // Paso 7: pérdida de vida, reinicio de posición y game over.
-    function killFrog() {}
+    // ── Callbacks ───────────────────────────────────────────────────────────
+    // Notifica solo los valores que cambiaron desde la última llamada.
+    function syncCallbacks() {
+      const s = stateRef.current;
+      if (s.score !== prevScore) {
+        prevScore = s.score;
+        onScoreChange(s.score);
+      }
+      if (s.lives !== prevLives) {
+        prevLives = s.lives;
+        onLivesChange(s.lives);
+      }
+      if (s.level !== prevLevel) {
+        prevLevel = s.level;
+        onLevelChange(s.level);
+      }
+    }
+
+    // ── Muerte ──────────────────────────────────────────────────────────────
+    function killFrog() {
+      if (over) return;
+      const s = stateRef.current;
+      s.lives -= 1;
+
+      if (s.lives > 0) {
+        respawnFrog(s); // onLivesChange se dispara en update()
+        return;
+      }
+
+      // Última vida: onLivesChange(0) siempre antes que onGameOver
+      over = true;
+      syncCallbacks();
+      onGameOver(s.score);
+    }
 
     // ── Ronda completada ────────────────────────────────────────────────────
     // onLevelChange se dispara en update() al detectar el cambio de nivel.
@@ -694,18 +727,7 @@ export default function FroggerGame({
         killFrog();
       }
 
-      if (s.score !== prevScore) {
-        prevScore = s.score;
-        onScoreChange(s.score);
-      }
-      if (s.lives !== prevLives) {
-        prevLives = s.lives;
-        onLivesChange(s.lives);
-      }
-      if (s.level !== prevLevel) {
-        prevLevel = s.level;
-        onLevelChange(s.level);
-      }
+      syncCallbacks();
     }
 
     // ── Draw ────────────────────────────────────────────────────────────────
@@ -726,7 +748,7 @@ export default function FroggerGame({
       last = now;
       if (!pausedRef.current) update(dt);
       draw();
-      raf = requestAnimationFrame(frame);
+      if (!over) raf = requestAnimationFrame(frame); // game over detiene el loop
     }
 
     document.addEventListener('keydown', handleKey);
