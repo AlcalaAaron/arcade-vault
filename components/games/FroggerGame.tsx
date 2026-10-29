@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 
 interface FroggerGameProps {
   paused: boolean;
+  skinKey?: string;
   onScoreChange: (score: number) => void;
   onLivesChange: (lives: number) => void;
   onLevelChange: (level: number) => void;
@@ -251,7 +252,10 @@ function checkRoadCollision(frog: Frog, lanes: Lane[]): boolean {
   const left = frog.col + FROG_HITBOX_MARGIN;
   const right = frog.col + 1 - FROG_HITBOX_MARGIN;
   return lane.entities.some(
-    (e) => (e.type === 'car' || e.type === 'truck') && left < e.col + e.width && right > e.col,
+    (e) =>
+      (e.type === 'car' || e.type === 'truck') &&
+      left < e.col + e.width &&
+      right > e.col,
   );
 }
 
@@ -272,46 +276,288 @@ function updateTurtles(lanes: Lane[], elapsed: number) {
   for (const lane of lanes) {
     for (const e of lane.entities) {
       if (e.type !== 'turtle') continue;
-      e.submerged = (elapsed + (e.diveOffset ?? 0)) % cycle >= TURTLE_VISIBLE_MS;
+      e.submerged =
+        (elapsed + (e.diveOffset ?? 0)) % cycle >= TURTLE_VISIBLE_MS;
     }
   }
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
-const COLOR_ROAD = '#0b0b10';
-const COLOR_RIVER = '#0a1f4a';
-const COLOR_SAFE = '#0d3b1e';
-const COLOR_GOAL = '#2f9e57';
-const COLOR_GOLD = '#f5c518';
-const COLOR_FROG = '#39ff14';
-const COLOR_FROG_DARK = '#1fa80c';
-const CAR_COLORS = ['#e63946', '#f4c20d', '#3a86ff'];
+type Skin = {
+  name: string;
+  /** Fondo del canvas (neon: negro puro). null = no se rellena. */
+  boardBg: string | null;
+  /** Zonas; null = se deja ver boardBg. */
+  safe: string | null;
+  river: string | null;
+  road: string | null;
+  goal: string;
+  gold: string;
+  /** Bordes brillantes entre zonas (solo neon). */
+  zoneLine: string | null;
+  laneLine: string;
+  frog: string;
+  frogDark: string;
+  frogGoal: string;
+  frogGoalLeg: string;
+  carColors: string[];
+  truckCargo: string;
+  truckCargoStroke: string | null;
+  truckCab: string;
+  glass: string;
+  wheel: string;
+  log: string;
+  logGrain: string;
+  turtle: string;
+  turtleDark: string;
+  turtleSubmerged: string;
+  hudBg: string;
+  hudText: string;
+  timeHigh: string;
+  timeMid: string;
+  timeLow: string;
+  /** shadowBlur para glow; 0 = sin glow. */
+  glow: number;
+  drawBody: (
+    ctx: CanvasRenderingContext2D,
+    color: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ) => void;
+};
 
-function drawBackground(ctx: CanvasRenderingContext2D) {
+function withAlpha(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function setGlow(ctx: CanvasRenderingContext2D, color: string, blur: number) {
+  if (blur <= 0) return;
+  ctx.shadowBlur = blur;
+  ctx.shadowColor = color;
+}
+
+function clearGlow(ctx: CanvasRenderingContext2D) {
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = 'transparent';
+}
+
+// Cuerpo liso con esquinas redondeadas (paleta arcade original)
+function drawBodyClassic(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fill();
+}
+
+// Bloque sólido CRT con línea de luz de 4px en el tope, sin glow
+function drawBodyRetro(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, Math.min(r, 2));
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(x + 1, y + 1, w - 2, 4);
+}
+
+// Relleno translúcido + contorno brillante con glow
+function drawBodyNeon(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  ctx.save();
+  setGlow(ctx, color, 14);
+  ctx.fillStyle = withAlpha(color, 0.4);
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.restore();
+}
+
+const SKINS: Record<string, Skin> = {
+  classic: {
+    name: 'Classic',
+    boardBg: null,
+    safe: '#0d3b1e',
+    river: '#0a1f4a',
+    road: '#0b0b10',
+    goal: '#2f9e57',
+    gold: '#f5c518',
+    zoneLine: null,
+    laneLine: 'rgba(255,255,255,0.25)',
+    frog: '#39ff14',
+    frogDark: '#1fa80c',
+    frogGoal: '#1fa80c',
+    frogGoalLeg: '#0f6e06',
+    carColors: ['#e63946', '#f4c20d', '#3a86ff'],
+    truckCargo: '#b8bec6',
+    truckCargoStroke: '#7b828b',
+    truckCab: '#4a6fa5',
+    glass: 'rgba(200,230,255,0.85)',
+    wheel: '#111111',
+    log: '#7a4a21',
+    logGrain: '#4e2c10',
+    turtle: '#2e9e4a',
+    turtleDark: '#1b6b30',
+    turtleSubmerged: 'rgba(46,158,74,0.35)',
+    hudBg: 'rgba(0,0,0,0.55)',
+    hudText: '#ffffff',
+    timeHigh: '#39ff14',
+    timeMid: '#f4c20d',
+    timeLow: '#e63946',
+    glow: 0,
+    drawBody: drawBodyClassic,
+  },
+  retro: {
+    name: 'Retro',
+    boardBg: null,
+    safe: '#3f7a52',
+    river: '#355fa8',
+    road: '#3a3a4c',
+    goal: '#81c784',
+    gold: '#ffd54f',
+    zoneLine: null,
+    laneLine: 'rgba(255,255,255,0.4)',
+    frog: '#aed581',
+    frogDark: '#689f38',
+    frogGoal: '#c5e1a5',
+    frogGoalLeg: '#7cb342',
+    carColors: ['#e57373', '#ffd54f', '#64b5f6'],
+    truckCargo: '#cfd8dc',
+    truckCargoStroke: '#90a4ae',
+    truckCab: '#7986cb',
+    glass: 'rgba(255,255,255,0.6)',
+    wheel: '#263238',
+    log: '#b07a4f',
+    logGrain: '#7a4f2d',
+    turtle: '#66bb6a',
+    turtleDark: '#388e3c',
+    turtleSubmerged: 'rgba(165,214,167,0.4)',
+    hudBg: 'rgba(20,20,30,0.7)',
+    hudText: '#fff8e1',
+    timeHigh: '#aed581',
+    timeMid: '#ffd54f',
+    timeLow: '#e57373',
+    glow: 0,
+    drawBody: drawBodyRetro,
+  },
+  neon: {
+    name: 'Neon',
+    boardBg: '#000000',
+    safe: null,
+    river: '#00103a',
+    road: null,
+    goal: '#00ff66',
+    gold: '#ffff00',
+    zoneLine: '#00ffff',
+    laneLine: 'rgba(0,255,255,0.35)',
+    frog: '#39ff14',
+    frogDark: '#00ff99',
+    frogGoal: '#00ffaa',
+    frogGoalLeg: '#00cc88',
+    carColors: ['#ff0040', '#ffff00', '#00aaff'],
+    truckCargo: '#ff00ff',
+    truckCargoStroke: null,
+    truckCab: '#00ffff',
+    glass: 'rgba(255,255,255,0.9)',
+    wheel: '#ffffff',
+    log: '#ff8000',
+    logGrain: 'rgba(255,128,0,0.7)',
+    turtle: '#00ff66',
+    turtleDark: '#003d1a',
+    turtleSubmerged: 'rgba(0,255,102,0.35)',
+    hudBg: 'rgba(0,0,0,0.75)',
+    hudText: '#00ffff',
+    timeHigh: '#00ff66',
+    timeMid: '#ffff00',
+    timeLow: '#ff0040',
+    glow: 14,
+    drawBody: drawBodyNeon,
+  },
+};
+
+function drawBackground(ctx: CanvasRenderingContext2D, skin: Skin) {
   const rows = (top: number, bottom: number) => (bottom - top + 1) * CELL;
 
-  ctx.fillStyle = COLOR_SAFE;
-  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  if (skin.boardBg) {
+    ctx.fillStyle = skin.boardBg;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
 
-  ctx.fillStyle = COLOR_RIVER;
-  ctx.fillRect(
-    0,
-    ROW_RIVER_TOP * CELL,
-    CANVAS_W,
-    rows(ROW_RIVER_TOP, ROW_RIVER_BOT),
-  );
+  if (skin.safe) {
+    ctx.fillStyle = skin.safe;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
 
-  ctx.fillStyle = COLOR_ROAD;
-  ctx.fillRect(
-    0,
-    ROW_ROAD_TOP * CELL,
-    CANVAS_W,
-    rows(ROW_ROAD_TOP, ROW_ROAD_BOT),
-  );
+  if (skin.river) {
+    ctx.fillStyle = skin.river;
+    ctx.fillRect(
+      0,
+      ROW_RIVER_TOP * CELL,
+      CANVAS_W,
+      rows(ROW_RIVER_TOP, ROW_RIVER_BOT),
+    );
+  }
+
+  if (skin.road) {
+    ctx.fillStyle = skin.road;
+    ctx.fillRect(
+      0,
+      ROW_ROAD_TOP * CELL,
+      CANVAS_W,
+      rows(ROW_ROAD_TOP, ROW_ROAD_BOT),
+    );
+  }
+
+  // Bordes brillantes entre zonas (neon)
+  if (skin.zoneLine) {
+    ctx.save();
+    setGlow(ctx, skin.zoneLine, skin.glow);
+    ctx.strokeStyle = skin.zoneLine;
+    ctx.lineWidth = 2;
+    for (const row of [
+      ROW_RIVER_TOP,
+      ROW_RIVER_BOT + 1,
+      ROW_ROAD_TOP,
+      ROW_ROAD_BOT + 1,
+    ]) {
+      ctx.beginPath();
+      ctx.moveTo(0, row * CELL);
+      ctx.lineTo(CANVAS_W, row * CELL);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   // Líneas discontinuas entre carriles de carretera
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.strokeStyle = skin.laneLine;
   ctx.lineWidth = 2;
   ctx.setLineDash([12, 12]);
   for (let r = ROW_ROAD_TOP + 1; r <= ROW_ROAD_BOT; r++) {
@@ -325,19 +571,38 @@ function drawBackground(ctx: CanvasRenderingContext2D) {
 
 function drawFrogShape(
   ctx: CanvasRenderingContext2D,
+  skin: Skin,
   jumping: boolean,
   color: string,
   legColor: string,
 ) {
   // Dibujada mirando hacia arriba, centrada en el origen
+  ctx.save();
+  setGlow(ctx, color, skin.glow);
   ctx.fillStyle = legColor;
   const spread = jumping ? 1 : 0.55;
   for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.ellipse(side * 13 * spread + side * 3, 9 * spread + 3, 5, 8, side * 0.6, 0, Math.PI * 2);
+    ctx.ellipse(
+      side * 13 * spread + side * 3,
+      9 * spread + 3,
+      5,
+      8,
+      side * 0.6,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(side * 12 * spread + side * 3, -8 * spread - 1, 4, 6, -side * 0.6, 0, Math.PI * 2);
+    ctx.ellipse(
+      side * 12 * spread + side * 3,
+      -8 * spread - 1,
+      4,
+      6,
+      -side * 0.6,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 
@@ -346,6 +611,7 @@ function drawFrogShape(
   ctx.ellipse(0, 0, 14, 12, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  clearGlow(ctx);
   for (const side of [-1, 1]) {
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
@@ -356,22 +622,29 @@ function drawFrogShape(
     ctx.arc(side * 7, -9, 2, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
 }
 
-function drawGoals(ctx: CanvasRenderingContext2D, goals: boolean[]) {
+function drawGoals(
+  ctx: CanvasRenderingContext2D,
+  skin: Skin,
+  goals: boolean[],
+) {
   for (let i = 0; i < GOAL_SLOTS; i++) {
     const x = goalStartCol(i) * CELL;
     const w = GOAL_WIDTH * CELL;
-    ctx.fillStyle = COLOR_GOAL;
-    ctx.fillRect(x, 0, w, CELL);
-    ctx.strokeStyle = COLOR_GOLD;
+    skin.drawBody(ctx, skin.goal, x, 0, w, CELL, 0);
+    ctx.save();
+    setGlow(ctx, skin.gold, skin.glow);
+    ctx.strokeStyle = skin.gold;
     ctx.lineWidth = 2;
     ctx.strokeRect(x + 1, 1, w - 2, CELL - 2);
+    ctx.restore();
 
     if (goals[i]) {
       ctx.save();
       ctx.translate(x + w / 2, CELL / 2);
-      drawFrogShape(ctx, false, COLOR_FROG_DARK, '#0f6e06');
+      drawFrogShape(ctx, skin, false, skin.frogGoal, skin.frogGoalLeg);
       ctx.restore();
     }
   }
@@ -379,11 +652,12 @@ function drawGoals(ctx: CanvasRenderingContext2D, goals: boolean[]) {
 
 function drawWheels(
   ctx: CanvasRenderingContext2D,
+  skin: Skin,
   xs: number[],
   y: number,
   h: number,
 ) {
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = skin.wheel;
   for (const wx of xs) {
     for (const wy of [y, y + h]) {
       ctx.beginPath();
@@ -393,24 +667,40 @@ function drawWheels(
   }
 }
 
-function drawCar(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity, index: number) {
+function drawCar(
+  ctx: CanvasRenderingContext2D,
+  skin: Skin,
+  lane: Lane,
+  e: Entity,
+  index: number,
+) {
   const x = e.col * CELL + 3;
   const w = e.width * CELL - 6;
   const y = lane.row * CELL + 7;
   const h = CELL - 14;
 
-  ctx.fillStyle = CAR_COLORS[(lane.row + index) % CAR_COLORS.length];
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 5);
-  ctx.fill();
+  skin.drawBody(
+    ctx,
+    skin.carColors[(lane.row + index) % skin.carColors.length],
+    x,
+    y,
+    w,
+    h,
+    5,
+  );
 
-  ctx.fillStyle = 'rgba(200,230,255,0.85)';
+  ctx.fillStyle = skin.glass;
   ctx.fillRect(lane.dir === 1 ? x + w - 14 : x + 5, y + 4, 9, h - 8);
 
-  drawWheels(ctx, [x + 9, x + w - 9], y, h);
+  drawWheels(ctx, skin, [x + 9, x + w - 9], y, h);
 }
 
-function drawTruck(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
+function drawTruck(
+  ctx: CanvasRenderingContext2D,
+  skin: Skin,
+  lane: Lane,
+  e: Entity,
+) {
   const x = e.col * CELL + 3;
   const w = e.width * CELL - 6;
   const y = lane.row * CELL + 6;
@@ -420,35 +710,41 @@ function drawTruck(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
   const cargoX = lane.dir === 1 ? x : x + cabW;
   const cargoW = w - cabW;
 
-  ctx.fillStyle = '#b8bec6';
-  ctx.fillRect(cargoX, y, cargoW, h);
-  ctx.strokeStyle = '#7b828b';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(cargoX + 0.5, y + 0.5, cargoW - 1, h - 1);
+  skin.drawBody(ctx, skin.truckCargo, cargoX, y, cargoW, h, 0);
+  if (skin.truckCargoStroke) {
+    ctx.strokeStyle = skin.truckCargoStroke;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cargoX + 0.5, y + 0.5, cargoW - 1, h - 1);
+  }
 
-  ctx.fillStyle = '#4a6fa5';
-  ctx.beginPath();
-  ctx.roundRect(cabX, y, cabW, h, 5);
-  ctx.fill();
+  skin.drawBody(ctx, skin.truckCab, cabX, y, cabW, h, 5);
 
-  ctx.fillStyle = 'rgba(200,230,255,0.85)';
+  ctx.fillStyle = skin.glass;
   ctx.fillRect(lane.dir === 1 ? cabX + cabW - 11 : cabX + 4, y + 4, 8, h - 8);
 
-  drawWheels(ctx, [cabX + cabW / 2, cargoX + 9, cargoX + cargoW - 9], y, h);
+  drawWheels(
+    ctx,
+    skin,
+    [cabX + cabW / 2, cargoX + 9, cargoX + cargoW - 9],
+    y,
+    h,
+  );
 }
 
-function drawLog(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
+function drawLog(
+  ctx: CanvasRenderingContext2D,
+  skin: Skin,
+  lane: Lane,
+  e: Entity,
+) {
   const x = e.col * CELL + 2;
   const w = e.width * CELL - 4;
   const y = lane.row * CELL + 6;
   const h = CELL - 12;
 
-  ctx.fillStyle = '#7a4a21';
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 7);
-  ctx.fill();
+  skin.drawBody(ctx, skin.log, x, y, w, h, 7);
 
-  ctx.strokeStyle = '#4e2c10';
+  ctx.strokeStyle = skin.logGrain;
   ctx.lineWidth = 2;
   for (let lx = x + 12; lx < x + w - 8; lx += 16) {
     ctx.beginPath();
@@ -458,13 +754,18 @@ function drawLog(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
   }
 }
 
-function drawTurtle(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
+function drawTurtle(
+  ctx: CanvasRenderingContext2D,
+  skin: Skin,
+  lane: Lane,
+  e: Entity,
+) {
   for (let k = 0; k < e.width; k++) {
     const cx = (e.col + k + 0.5) * CELL;
     const cy = (lane.row + 0.5) * CELL;
 
     if (e.submerged) {
-      ctx.strokeStyle = 'rgba(46,158,74,0.35)';
+      ctx.strokeStyle = skin.turtleSubmerged;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(cx, cy, 14, 0, Math.PI * 2);
@@ -472,16 +773,19 @@ function drawTurtle(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
       continue;
     }
 
-    ctx.fillStyle = '#2e9e4a';
+    ctx.save();
+    setGlow(ctx, skin.turtle, skin.glow);
+    ctx.fillStyle = skin.turtle;
     ctx.beginPath();
     ctx.arc(cx - lane.dir * 2, cy, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.arc(cx + lane.dir * 15, cy, 5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
 
     // Escamas
-    ctx.strokeStyle = '#1b6b30';
+    ctx.strokeStyle = skin.turtleDark;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(cx - lane.dir * 2, cy, 8, 0, Math.PI * 2);
@@ -495,17 +799,18 @@ function drawTurtle(ctx: CanvasRenderingContext2D, lane: Lane, e: Entity) {
 
 function drawEntity(
   ctx: CanvasRenderingContext2D,
+  skin: Skin,
   lane: Lane,
   e: Entity,
   index: number,
 ) {
-  if (e.type === 'car') drawCar(ctx, lane, e, index);
-  else if (e.type === 'truck') drawTruck(ctx, lane, e);
-  else if (e.type === 'log') drawLog(ctx, lane, e);
-  else drawTurtle(ctx, lane, e);
+  if (e.type === 'car') drawCar(ctx, skin, lane, e, index);
+  else if (e.type === 'truck') drawTruck(ctx, skin, lane, e);
+  else if (e.type === 'log') drawLog(ctx, skin, lane, e);
+  else drawTurtle(ctx, skin, lane, e);
 }
 
-function drawFrog(ctx: CanvasRenderingContext2D, s: GameState) {
+function drawFrog(ctx: CanvasRenderingContext2D, skin: Skin, s: GameState) {
   const { frog } = s;
   const t = frog.animating ? Math.min(frog.animT / JUMP_MS, 1) : 0;
   const col = frog.col + (frog.targetCol - frog.col) * t;
@@ -514,40 +819,52 @@ function drawFrog(ctx: CanvasRenderingContext2D, s: GameState) {
   ctx.save();
   ctx.translate((col + 0.5) * CELL, (row + 0.5) * CELL);
   ctx.rotate(DIR_ANGLE[s.facing]);
-  drawFrogShape(ctx, frog.animating, COLOR_FROG, COLOR_FROG_DARK);
+  drawFrogShape(ctx, skin, frog.animating, skin.frog, skin.frogDark);
   ctx.restore();
 }
 
 // El HUD se superpone a la fila de metas: franja translúcida arriba y barra
 // de tiempo pegada al borde inferior de la fila 0.
-function drawHud(ctx: CanvasRenderingContext2D, s: GameState) {
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+function drawHud(ctx: CanvasRenderingContext2D, skin: Skin, s: GameState) {
+  ctx.fillStyle = skin.hudBg;
   ctx.fillRect(0, 0, CANVAS_W, 22);
 
-  ctx.fillStyle = '#ffffff';
+  ctx.save();
+  setGlow(ctx, skin.hudText, skin.glow / 2);
+  ctx.fillStyle = skin.hudText;
   ctx.font = 'bold 16px monospace';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.fillText(`PUNTOS ${s.score}`, 8, 11);
   ctx.textAlign = 'center';
   ctx.fillText(`NIVEL ${s.level}`, CANVAS_W / 2, 11);
+  ctx.restore();
 
-  ctx.fillStyle = COLOR_FROG;
+  ctx.save();
+  setGlow(ctx, skin.frog, skin.glow / 2);
+  ctx.fillStyle = skin.frog;
   for (let i = 0; i < s.lives; i++) {
     ctx.beginPath();
     ctx.arc(CANVAS_W - 14 - i * 20, 11, 6, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
 
   const ratio = Math.max(0, s.timeLeft / roundTimeMs(s.level));
-  ctx.fillStyle = ratio > 0.5 ? COLOR_FROG : ratio > 0.25 ? '#f4c20d' : '#e63946';
+  const barColor =
+    ratio > 0.5 ? skin.timeHigh : ratio > 0.25 ? skin.timeMid : skin.timeLow;
+  ctx.save();
+  setGlow(ctx, barColor, skin.glow / 2);
+  ctx.fillStyle = barColor;
   ctx.fillRect(0, CELL - 4, CANVAS_W * ratio, 4);
+  ctx.restore();
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function FroggerGame({
   paused,
+  skinKey = 'classic',
   onScoreChange,
   onLivesChange,
   onLevelChange,
@@ -556,6 +873,12 @@ export default function FroggerGame({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused);
   const stateRef = useRef<GameState>(initialState());
+  const skinRef = useRef<Skin>(SKINS[skinKey] ?? SKINS.classic);
+
+  // Re-sync skin so the loop reads the latest value without re-mounting.
+  useEffect(() => {
+    skinRef.current = SKINS[skinKey] ?? SKINS.classic;
+  }, [skinKey]);
 
   // Sync paused ref so the loop reads the latest value without re-mounting.
   useEffect(() => {
@@ -653,7 +976,8 @@ export default function FroggerGame({
 
       const row = frog.row + dy;
       let col = frog.col + dx;
-      if (row < ROW_GOALS || row > ROW_START || col < 0 || col > COLS - 1) return;
+      if (row < ROW_GOALS || row > ROW_START || col < 0 || col > COLS - 1)
+        return;
       // Fuera del río la rana vuelve a la cuadrícula entera
       if (!isRiverRow(row)) col = Math.round(col);
 
@@ -697,7 +1021,9 @@ export default function FroggerGame({
 
       // Soporte en el río, evaluado antes de mover las entidades
       const riding =
-        !frog.animating && isRiverRow(frog.row) ? getSupport(frog, lanes) : null;
+        !frog.animating && isRiverRow(frog.row)
+          ? getSupport(frog, lanes)
+          : null;
 
       for (const lane of lanes) {
         const delta = (lane.speed * lane.dir * dt) / 16 / CELL; // px/frame → celdas
@@ -733,13 +1059,14 @@ export default function FroggerGame({
     // ── Draw ────────────────────────────────────────────────────────────────
     function draw() {
       const s = stateRef.current;
-      drawBackground(ctx);
-      drawGoals(ctx, s.goals);
+      const skin = skinRef.current;
+      drawBackground(ctx, skin);
+      drawGoals(ctx, skin, s.goals);
       for (const lane of s.lanes) {
-        lane.entities.forEach((e, i) => drawEntity(ctx, lane, e, i));
+        lane.entities.forEach((e, i) => drawEntity(ctx, skin, lane, e, i));
       }
-      drawFrog(ctx, s);
-      drawHud(ctx, s);
+      drawFrog(ctx, skin, s);
+      drawHud(ctx, skin, s);
     }
 
     // ── Loop ────────────────────────────────────────────────────────────────
