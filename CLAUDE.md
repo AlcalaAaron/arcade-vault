@@ -10,27 +10,40 @@ Arcade Vault — online gaming platform where users play classic arcade games an
 
 ## Stack
 
-- **Next.js 16.2.6** with App Router — read `node_modules/next/dist/docs/` before writing Next.js code; APIs differ from training data
+- **Next.js 16.4.x** with App Router — read `node_modules/next/dist/docs/` before writing Next.js code; APIs differ from training data
 - **React 19.2.4**
 - **Tailwind CSS v4** (PostCSS plugin via `@tailwindcss/postcss`)
 - **TypeScript**
 - **Supabase** (`@supabase/ssr`, `@supabase/supabase-js`) — auth + scores persistence
 - **Resend** — contact form email delivery
+- **ESLint 9** + **Prettier** (`.prettierrc`)
 
 No test runner configured.
+
+## Commands
+
+`npm run dev` · `build` · `start` · `lint` · `format` · `format:check`
 
 ## Skills
 
 Usa siempre `/frontend-design` para diseñar la interfaz de usuario.
 
-`/spec-impl-game <spec>` — como `/spec-impl` pero, al terminar, lanza `skin-designer` y luego `mobile-porter` sobre el juego del spec.
+- `/spec`, `/spec-impl` — flujo Spec Driven Design (Klerith/fernando-skills).
+- `/add-game <carpeta de references/started-games | descripción>` — genera `specs/NN-<slug>-game.md` para un juego nuevo (no escribe código).
+- `/spec-impl-game <spec>` — como `/spec-impl` pero, al terminar, lanza `skin-designer` y luego `mobile-porter` sobre el juego del spec.
 
 ## Agentes
 
-- **`game-planner`** (`.claude/agents/game-planner.md`) — planifica y sugiere el próximo juego a implementar. Lee el catálogo actual, evalúa candidatos por diversidad de género, factibilidad en canvas 2D y reconocimiento clásico, y mantiene una memoria persistente de sugerencias en `references/game-suggestions-todo.md`. Úsalo cuando el usuario pregunte qué juego sigue o pida ideas.
-- **`game-jam`** (`.claude/agents/game-jam.md`) — dado un tema en lenguaje natural, elige un juego arcade y genera al menos dos specs completos en `specs/game-jam/<game-id>/` siguiendo el formato de los specs 07-09. Úsalo con "game jam: <tema>" o "specs para un juego de <tema>".
-- **`skin-designer`** (`.claude/agents/skin-designer.md`) — aplica los 3 skins canónicos (classic, retro, neon) al juego indicado por el usuario. Trabaja un juego por corrida. Implementa directamente sobre `components/games/<Juego>.tsx` siguiendo el patrón de TetrisGame. Memoria en `references/game-with-themes.md`. Úsalo con "aplica skins a \<juego\>".
-- **`mobile-porter`** (`.claude/agents/mobile-porter.md`) — aplica el patrón de controles táctiles mobile (spec 10) a un juego concreto: oculta el HUD en `<md`, escala el canvas, y cabla `<MobileGamepad>` en la play-page sin tocar el componente canvas. Trabaja un juego por corrida. Úsalo con "porta \<juego\> a mobile", "añade controles táctiles a \<juego\>" o "haz \<juego\> responsive".
+Definiciones y detalle en `.claude/agents/<nombre>.md`.
+
+- **`game-planner`** — sugiere el próximo juego a implementar.
+- **`game-jam`** — genera specs de un juego a partir de un tema (`specs/game-jam/<game-id>/`).
+- **`skin-designer`** — aplica los skins classic/retro/neon a un juego.
+- **`mobile-porter`** — añade controles táctiles mobile (spec 10) a un juego.
+
+## Hooks
+
+`PostToolUse` sobre `Write|Edit` ejecuta `.claude/hooks/format-and-lint.mjs` (Prettier + ESLint sobre el archivo editado).
 
 ## Architecture
 
@@ -43,10 +56,9 @@ App Router exclusively — no `pages/` directory.
 - `about/` — about + contact form
 - `api/contact/` — Resend-backed contact endpoint
 - `auth/` — Supabase auth page
-- `games/` — games index (`GamesGrid.tsx`) + per-game routes like: `arkanoid`, `asteroids`, `snake`, `tetris` and more...
-  (see `references/implemented-games.md`) when you need to check which games are implemented and how to implement new ones.
-
+- `games/` — games index (`GamesGrid.tsx`) + una carpeta por juego con su `play/`: `arkanoid`, `asteroids`, `frogger`, `snake`, `tetris`
 - `games/[id]/` — dynamic game detail with nested `play/` route
+  (see `references/implemented-games.md` when you need to check which games are implemented and how to implement new ones.)
 - `hall-of-fame/` — leaderboard / scores
 - `context/UserContext.tsx` — client-side auth user context
 - `data/` — static catalog: `games.ts`, `scores.ts`, `index.ts`
@@ -55,13 +67,16 @@ App Router exclusively — no `pages/` directory.
 ### Shared code
 
 - `components/Nav.tsx` — top navigation
-- `components/games/` — canvas game implementations (`ArkanoidGame`, `AsteroidsGame`, `SnakeGame`, `TetrisGame`)
+- `components/MobileGamepad.tsx` (+ `.module.css`) — gamepad táctil compartido, cableado en las play-pages
+- `components/games/` — canvas game implementations (`ArkanoidGame`, `AsteroidsGame`, `FroggerGame`, `SnakeGame`, `TetrisGame`)
 - `lib/supabase/` — `client.ts` (browser), `server.ts` (RSC/route handlers), `types.ts` (DB types)
 - `public/` — sprite sheets (`spritesheet-breakout.png`, `fruits.png`) and audio (`ball-bounce.mp3`, `break-sound.mp3`)
+- `references/` — catálogo de juegos implementados, sugerencias, skins (`game-with-themes.md`), templates de diseño y `started-games/`
+- `demos/` — demos sueltas
 
 ### Specs
 
-`specs/` holds the spec-driven design history (01 → 09): MVP screens, landing, about+contact, Supabase integration, each game, and the shared games-table/leaderboard schema.
+`specs/` holds the spec-driven design history (01 → 11): MVP screens, landing, about+contact, Supabase integration, each game, the shared games-table/leaderboard schema, mobile touch controls (10) and the neon gamepad skin (11). `specs/game-jam/<game-id>/` contiene los specs generados por `game-jam` (p. ej. `frogger`).
 
 ## Conventions
 
@@ -69,4 +84,4 @@ App Router exclusively — no `pages/` directory.
 - New routes: folder under `app/` with `page.tsx`.
 - Shared UI in `components/`; game logic colocated in `components/games/<Game>.tsx`.
 - Supabase: import from `lib/supabase/server` in RSC / route handlers, `lib/supabase/client` in client components.
-- New games follow the existing pattern: spec in `specs/`, canvas component in `components/games/`, route under `app/games/<name>/`, score writes through `lib/supabase`.
+- New games follow the existing pattern: spec in `specs/`, canvas component in `components/games/`, route under `app/games/<name>/`, score writes through `lib/supabase`. Use `/spec-impl-game` so the game also gets its skins and mobile support.
