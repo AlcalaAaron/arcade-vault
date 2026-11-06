@@ -11,5 +11,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "code-simplifier@anthropic-plugin-directory": true
   }
 }
