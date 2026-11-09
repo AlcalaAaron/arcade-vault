@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useUser } from '@/app/context/UserContext';
 import MobileGamepad from '@/components/MobileGamepad';
 
 const FroggerGame = dynamic(() => import('@/components/games/FroggerGame'), {
@@ -17,6 +18,7 @@ const SKIN_OPTIONS = [
 ];
 
 export default function FroggerPlay() {
+  const { user, username } = useUser();
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
   const [lives, setLives] = useState(3);
@@ -37,10 +39,10 @@ export default function FroggerPlay() {
 
   useEffect(() => {
     if (over) {
-      const saved = localStorage.getItem('av_player_name');
-      if (saved) setName(saved);
+      const preferred = username ?? localStorage.getItem('av_player_name');
+      if (preferred) setName(preferred);
     }
-  }, [over]);
+  }, [over, username]);
 
   function changeSkin(key: string) {
     setSkinKey(key);
@@ -53,7 +55,7 @@ export default function FroggerPlay() {
     setPaused(false);
     setOver(false);
     setSaved(false);
-    setName('INVITADO');
+    setName(username ?? 'INVITADO');
     setGameKey((k) => k + 1);
   }
 
@@ -207,7 +209,7 @@ export default function FroggerPlay() {
                       game_id: 'frogger',
                       player_name: name,
                       score,
-                      user_id: null,
+                      user_id: user?.id ?? null,
                     });
                   }}
                 >
