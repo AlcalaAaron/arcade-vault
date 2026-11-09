@@ -1,38 +1,52 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { Session, User } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 
 interface UserContextValue {
-  user: string | null;
-  login: (name: string) => void;
-  signOut: () => void;
+  user: User | null;
+  session: Session | null;
+  username: string | null;
+  signOut: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextValue>({
   user: null,
-  login: () => {},
-  signOut: () => {},
+  session: null,
+  username: null,
+  signOut: async () => {},
 });
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('av_user');
-  });
+  const supabase = useMemo(() => createClient(), []);
+  const [session, setSession] = useState<Session | null>(null);
 
-  function login(name: string) {
-    const trimmed = name.trim() || 'JUGADOR';
-    localStorage.setItem('av_user', trimmed);
-    setUser(trimmed);
-  }
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+    });
 
-  function signOut() {
-    localStorage.removeItem('av_user');
-    setUser(null);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  const user = session?.user ?? null;
+  const metadataUsername = user?.user_metadata?.username;
+  const username =
+    typeof metadataUsername === 'string' ? metadataUsername : null;
+
+  async function signOut() {
+    await supabase.auth.signOut();
   }
 
   return (
-    <UserContext.Provider value={{ user, login, signOut }}>
+    <UserContext.Provider value={{ user, session, username, signOut }}>
       {children}
     </UserContext.Provider>
   );
