@@ -8,7 +8,9 @@ import { useUser } from '@/app/context/UserContext';
 export default function Nav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { user, signOut } = useUser();
+  const { user, username, signOut } = useUser();
+  const displayName = username ?? user?.email?.split('@')[0] ?? 'JUGADOR';
+  const initial = displayName.charAt(0).toUpperCase();
 
   const isLibrary = pathname.startsWith('/games');
   const isHall = pathname === '/hall-of-fame';
@@ -54,9 +56,36 @@ export default function Nav() {
         </div>
 
         {user ? (
-          <button className="btn ghost auth-btn" onClick={handleSignOut}>
-            {user} ▾
-          </button>
+          <div
+            className="auth-btn"
+            style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+          >
+            <div
+              aria-hidden="true"
+              className="pixel"
+              style={{
+                width: 32,
+                height: 32,
+                display: 'grid',
+                placeItems: 'center',
+                borderRadius: '50%',
+                border: '1px solid var(--cyan)',
+                color: 'var(--cyan)',
+                fontSize: 11,
+              }}
+            >
+              {initial}
+            </div>
+            <span
+              className="mono"
+              style={{ fontSize: 12, color: 'var(--ink)' }}
+            >
+              {displayName}
+            </span>
+            <button className="btn ghost" onClick={handleSignOut}>
+              Cerrar sesión
+            </button>
+          </div>
         ) : (
           <Link href="/auth" className="btn auth-btn">
             Iniciar Sesión
@@ -102,13 +131,31 @@ export default function Nav() {
         <Link href="/about" className={isAbout ? 'active' : ''} onClick={close}>
           Sobre Nosotros
         </Link>
-        <Link
-          href="/auth"
-          className={pathname === '/auth' ? 'active' : ''}
-          onClick={close}
-        >
-          {user ? 'Cuenta' : 'Iniciar Sesión'}
-        </Link>
+        {user ? (
+          <>
+            <div
+              className="mono"
+              style={{
+                fontSize: 12,
+                color: 'var(--ink-dim)',
+                padding: '8px 0',
+              }}
+            >
+              {displayName}
+            </div>
+            <button className="btn ghost" onClick={handleSignOut}>
+              Cerrar sesión
+            </button>
+          </>
+        ) : (
+          <Link
+            href="/auth"
+            className={pathname === '/auth' ? 'active' : ''}
+            onClick={close}
+          >
+            Iniciar Sesión
+          </Link>
+        )}
         <div style={{ flex: 1 }} />
         <div
           className="pixel"
