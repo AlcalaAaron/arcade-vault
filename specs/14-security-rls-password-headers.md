@@ -1,6 +1,6 @@
 # SPEC 14 — Seguridad: RLS, contraseña robusta y headers HTTP
 
-> **Estado:** Implementado
+> **Estado:** Aprobado
 > **Depende de:** 04-supabase-integration · 06-games-table-leaderboard-supabase · 13-supabase-auth
 > **Fecha:** 2026-05-26
 > **Objetivo:** Aplicar el checklist de seguridad: RLS en `games` y `scores`,
