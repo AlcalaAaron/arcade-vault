@@ -20,6 +20,8 @@ Arcade Vault — online gaming platform where users play classic arcade games an
 
 No test runner configured.
 
+Supabase: Claude solo tiene MCP a `arcade-vault-dev`. Los cambios de esquema van en `supabase/migrations/` (+ `supabase/seed.sql`) y se propagan a prod manualmente con `docs/supabase-prod-runbook.md`.
+
 ## Commands
 
 `npm run dev` · `build` · `start` · `lint` · `format` · `format:check`
