@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useUser } from '@/app/context/UserContext';
 import MobileGamepad from '@/components/MobileGamepad';
 
 const TetrisGame = dynamic(() => import('@/components/games/TetrisGame'), {
@@ -23,6 +24,7 @@ function getSavedSkin() {
 }
 
 export default function TetrisPlay() {
+  const { user, username } = useUser();
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(1);
   const [level, setLevel] = useState(1);
@@ -47,10 +49,10 @@ export default function TetrisPlay() {
 
   useEffect(() => {
     if (over) {
-      const saved = localStorage.getItem('av_player_name');
-      if (saved) setName(saved);
+      const preferred = username ?? localStorage.getItem('av_player_name');
+      if (preferred) setName(preferred);
     }
-  }, [over]);
+  }, [over, username]);
 
   function changeSkin(key: string) {
     setSkinKey(key);
@@ -64,7 +66,7 @@ export default function TetrisPlay() {
     setPaused(false);
     setOver(false);
     setSaved(false);
-    setName('INVITADO');
+    setName(username ?? 'INVITADO');
     setGameKey((k) => k + 1);
   }
 
@@ -219,7 +221,7 @@ export default function TetrisPlay() {
                       game_id: 'tetris',
                       player_name: name,
                       score,
-                      user_id: null,
+                      user_id: user?.id ?? null,
                     });
                   }}
                 >
